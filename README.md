@@ -26,7 +26,7 @@ Start
 ```bash 
   ./main
 ```
-    
+🔴 Transfer the files into the folder you cloned or don't forget to move your main.cpp and main files to the target folder 
 ## Screenshot
 
 ![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/79719c37-4e53-4d50-b78e-0d6cf86b2c10)
