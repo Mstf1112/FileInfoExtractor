@@ -27,7 +27,7 @@ Start
   ./main
 ```
     
-## Ekran Görüntüleri
+## Screenshot
 
 ![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/79719c37-4e53-4d50-b78e-0d6cf86b2c10)
 
