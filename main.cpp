@@ -1,46 +1,75 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <filesystem> // C++17 ve üstü
+#include <filesystem> // C++17 
 namespace fs = std::filesystem;
+
+void showSupportedFormats()
+{
+    std::cout << "Supported formats: .json, .txt, .sql, .log" << std::endl;
+}
+
+bool searchInFile(const std::string& filePath, const std::string& searchTerm, bool listAll)
+{
+    std::ifstream file(filePath);
+    if (!file.is_open())
+    {
+        std::cerr << "File cannot be opened!!: " << filePath << std::endl;
+        return false;
+    }
+
+    std::string line;
+    bool found = false;
+    while (std::getline(file, line))
+    {
+        if (line.find(searchTerm) != std::string::npos)
+        {
+            std::cout << "Line found in: " << line << std::endl;
+            std::cout << "File: " << filePath << std::endl;
+            found = true;
+            if (!listAll) break; // End search for a single match
+        }
+    }
+    file.close();
+    return found;
+}
 
 int main()
 {
-    std::string searchEmail = "deneme@gmail.com";
+    std::string searchEmailOrWord;
+    int userChoice;
     bool found = false;
+
+    std::cout << "Search options:\n";
+    std::cout << "1- Search with a unique object\n";
+    std::cout << "2- List all with the specified value in it\n";
+    std::cout << "3- Supported Formats\n";
+    std::cin >> userChoice;
+
+    if (userChoice == 3)
+    {
+        showSupportedFormats();
+        return 0;
+    }
+
+    std::cout << "Enter the word or e-mail address you want to search for: ";
+    std::cin >> searchEmailOrWord;
 
     for (const auto &entry : fs::directory_iterator(fs::current_path()))
     {
-        if (entry.path().extension() == ".json" || entry.path().extension() == ".txt")
+        std::string ext = entry.path().extension().string();
+        
+        // SUPPORTED FORMATS
+        if (ext == ".json" || ext == ".txt" || ext == ".sql" || ext == ".log" || ext == ".csv")
         {
-            std::ifstream file(entry.path());
-            if (!file.is_open())
-            {
-                std::cerr << "Dosya açılamadı: " << entry.path() << std::endl;
-                continue;
-            }
-
-            std::string line;
-            while (std::getline(file, line))
-            {
-                if (line.find(searchEmail) != std::string::npos)
-                {
-                    std::cout << "Bulunan satır: " << line << std::endl;
-                    std::cout << "Dosya: " << entry.path() << std::endl;
-                    found = true;
-                    break; // İstiyorsan dosya içinde aramaya devam edebilirsin, buradan çıkmazsan devam eder
-                }
-            }
-
-            std::cout << "Dosya arandı: " << entry.path() << std::endl;
-
-            file.close();
+            found = searchInFile(entry.path().string(), searchEmailOrWord, userChoice == 2) || found;
         }
+        
     }
 
     if (!found)
     {
-        std::cout << searchEmail << " e-posta adresi bulunamadı!" << std::endl;
+        std::cout << searchEmailOrWord << " CANNOT FIND!" << std::endl;
     }
 
     return 0;
