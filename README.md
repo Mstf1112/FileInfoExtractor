@@ -27,11 +27,12 @@ Start
 ```bash 
   ./main
 ```
-🔴 Transfer the files into the folder you cloned or don't forget to move your main.cpp and main files to the target folder 
+🔴 Transfer the files into the folder you cloned or don't forget to move your main.cpp and main files to the target folder.
+You can find all results in the file ‘search_resaults_xxxx_xxxx_xxxx’ in the executed folder
 
 ## Screenshot
 
-![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/79719c37-4e53-4d50-b78e-0d6cf86b2c10)
+![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/b02fa7b8-0007-4711-8973-eb7d86e1126e)
 
 ## Usage
 
@@ -48,4 +49,11 @@ Press 3
 ```bash 
   Shows supported version
 ```
+  
+  
+  
+  
+  
+  
+  
   
