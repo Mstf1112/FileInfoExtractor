@@ -1,5 +1,3 @@
-
-
 # FileInfoExtractor
 
 [ENG]
@@ -34,6 +32,8 @@ You can find all results in the file ‘search_resaults_xxxx_xxxx_xxxx’ in the
 
 ![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/b02fa7b8-0007-4711-8973-eb7d86e1126e)
 
+![Uygulama Ekran Görüntüsü](https://github.com/user-attachments/assets/599c7eb9-962e-4f42-a033-ea3f575af772)
+
 ## Usage
 
 
@@ -49,11 +49,7 @@ Press 3
 ```bash 
   Shows supported version
 ```
-  
-  
-  
-  
-  
-  
-  
-  
+Press 4
+```bash 
+  List files without the specified value (@gmail, ıp, xxxx, etc)
+```
