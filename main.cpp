@@ -1,15 +1,48 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <filesystem> // C++17 
+#include <filesystem> // C++17
+#include <chrono>
+#include <iomanip>
+
 namespace fs = std::filesystem;
 
+// ANSI escape codes for colored output
+const std::string RESET = "\033[0m";  // Resets color to default
+const std::string GREEN = "\033[32m"; // Green text
+
+// Function to show supported formats
 void showSupportedFormats()
 {
-    std::cout << "Supported formats: .json, .txt, .sql, .log" << std::endl;
+    std::cout << "Supported formats: .json, .txt, .sql, .log, .csv" << std::endl;
 }
 
-bool searchInFile(const std::string& filePath, const std::string& searchTerm, bool listAll)
+// Function to generate a unique file name based on current time
+std::string generateUniqueFileName()
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+    
+    std::stringstream ss;
+    ss << "search_results_" << std::put_time(std::localtime(&now_c), "%Y%m%d_%H%M%S") << ".txt";
+    
+    return ss.str();
+}
+
+// Function to log found results into a file
+void logToFile(const std::string& filePath, const std::string& foundLine, std::ofstream& logFile)
+{
+    if (!logFile.is_open())
+    {
+        std::cerr << "Could not open or create log file!" << std::endl;
+        return;
+    }
+    logFile << "File: " << filePath << "\n";
+    logFile << "Line: " << foundLine << "\n\n";
+}
+
+// Function to search for the term in a file
+bool searchInFile(const std::string& filePath, const std::string& searchTerm, bool listAll, std::ofstream& logFile)
 {
     std::ifstream file(filePath);
     if (!file.is_open())
@@ -24,8 +57,13 @@ bool searchInFile(const std::string& filePath, const std::string& searchTerm, bo
     {
         if (line.find(searchTerm) != std::string::npos)
         {
-            std::cout << "Line found in: " << line << std::endl;
-            std::cout << "File: " << filePath << std::endl;
+            // Output with color highlighting only if a match is found
+            std::cout << GREEN << "Line found: " << line << RESET << std::endl;
+            std::cout << GREEN << "File: " << filePath << RESET << std::endl;
+
+            // Log the result to the file
+            logToFile(filePath, line, logFile);
+
             found = true;
             if (!listAll) break; // End search for a single match
         }
@@ -55,22 +93,29 @@ int main()
     std::cout << "Enter the word or e-mail address you want to search for: ";
     std::cin >> searchEmailOrWord;
 
+    // Generate a unique file name for logging results
+    std::string logFileName = generateUniqueFileName();
+    std::ofstream logFile(logFileName); // Create a new log file with a unique name
+
+    // Iterate over files in the current directory
     for (const auto &entry : fs::directory_iterator(fs::current_path()))
     {
         std::string ext = entry.path().extension().string();
-        
-        // SUPPORTED FORMATS
+
+        // Check if the file format is supported
         if (ext == ".json" || ext == ".txt" || ext == ".sql" || ext == ".log" || ext == ".csv")
         {
-            found = searchInFile(entry.path().string(), searchEmailOrWord, userChoice == 2) || found;
+            std::cout << "Searching in: " << entry.path().string() << std::endl;  // Show file being searched
+            found = searchInFile(entry.path().string(), searchEmailOrWord, userChoice == 2, logFile) || found;
         }
-        
     }
 
     if (!found)
     {
         std::cout << searchEmailOrWord << " CANNOT FIND!" << std::endl;
     }
+
+    std::cout << "Search complete. Results saved to " << logFileName << std::endl;  // Indicate the end of search and the log file
 
     return 0;
 }
