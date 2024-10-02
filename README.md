@@ -2,11 +2,11 @@
 
 [ENG]
 
-A programme that searches for saved file types (json,txt,log,sql) according to the given information (e-mail, name, phone number, etc.) and lists the results
+A programme that searches for saved file types (json,txt,log,sql,csv) according to the given information (e-mail, name, phone number, etc.) and lists the results
 
 [TR]
 
-Verilen bilgilere göre (e-posta, isim, telefon numarası vb.) kayıtlı dosya türlerini (json,txt,log,sql) arayan ve sonuçları listeleyen bir program
+Verilen bilgilere göre (e-posta, isim, telefon numarası vb.) kayıtlı dosya türlerini (json,txt,log,sql,csv) arayan ve sonuçları listeleyen bir program
 
 
 
