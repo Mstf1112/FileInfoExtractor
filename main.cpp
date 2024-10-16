@@ -118,6 +118,18 @@ void searchInDirectory(const fs::path& dir, const std::vector<std::string>& sear
     }
 }
 
+// Function to create "Results" folder if it doesn't exist
+fs::path createResultsFolder()
+{
+    fs::path resultsFolder = fs::current_path() / "Results";
+    if (!fs::exists(resultsFolder))
+    {
+        fs::create_directory(resultsFolder);
+        std::cout << "Results folder created at: " << resultsFolder << std::endl;
+    }
+    return resultsFolder;
+}
+
 int main()
 {
     std::string searchEmailOrWord;
@@ -160,8 +172,11 @@ int main()
         }
     }
 
+    // Create the "Results" folder if it doesn't exist
+    fs::path resultsFolder = createResultsFolder();
+
     // Generate a unique file name for logging results in CSV format
-    std::string logFileName = generateUniqueFileName(".csv");
+    std::string logFileName = (resultsFolder / generateUniqueFileName(".csv")).string();
     std::ofstream logFile(logFileName); // Create a new log file with a unique name
 
     // Write CSV headers
