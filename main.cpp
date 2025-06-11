@@ -188,9 +188,10 @@ int main()
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
     std::cout << "\n\u2705 Search completed.\n";
-    std::cout << "\ud83d\udd50 Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
-    std::cout << YELLOW << "\ud83d\udcc4 Total files scanned: " << totalFiles << RESET << std::endl;
-    std::cout << "\ud83d\udcc1 Results saved to: " << logFileName << std::endl;
+    std::cout << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
+    std::cout << "Total files scanned: " << totalFiles << std::endl;
+    std::cout << "Results saved to: " << logFileName << std::endl;
+
 
     return 0;
 }
