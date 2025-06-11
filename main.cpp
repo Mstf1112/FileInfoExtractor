@@ -9,14 +9,21 @@
 #include <algorithm>
 #include <future>
 #include <mutex>
+#include <semaphore>
 
 namespace fs = std::filesystem;
 
+// ANSI escape codes
 const std::string RESET = "\033[0m";
 const std::string GREEN = "\033[32m";
 const std::string YELLOW = "\033[33m";
 
+// Mutex for thread-safe logging
 std::mutex logMutex;
+
+// Max concurrent threads/files
+constexpr int MAX_PARALLEL = 64;
+std::counting_semaphore<MAX_PARALLEL> semaphore(MAX_PARALLEL);
 
 void showSupportedFormats()
 {
@@ -151,29 +158,22 @@ int main()
     std::vector<std::future<bool>> futures;
     int totalFiles = 0;
 
-    try
-    {
-        for (auto it = fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::skip_permission_denied);
-             it != fs::recursive_directory_iterator(); ++it)
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
         {
-            try
+            if (fs::is_regular_file(entry))
             {
-                const auto& entry = *it;
-                if (fs::is_regular_file(entry))
+                std::string ext = entry.path().extension().string();
+                if (isSupportedExtension(ext))
                 {
-                    std::string ext = entry.path().extension().string();
-                    if (isSupportedExtension(ext))
-                    {
-                        ++totalFiles;
-                        futures.push_back(std::async(std::launch::async, searchInFile, entry.path().string(), std::ref(searchTerms), userChoice == 2, std::ref(logFile)));
-                    }
+                    ++totalFiles;
+                    futures.push_back(std::async(std::launch::async, [&semaphore, entry, &searchTerms, userChoice, &logFile]() {
+                        semaphore.acquire();
+                        bool result = searchInFile(entry.path().string(), searchTerms, userChoice == 2, logFile);
+                        semaphore.release();
+                        return result;
+                    }));
                 }
-            }
-            catch (const fs::filesystem_error& e)
-            {
-                std::lock_guard<std::mutex> guard(logMutex);
-                std::cerr << "Filesystem error while accessing file: " << e.what() << std::endl;
-                continue;
             }
         }
     }
@@ -187,11 +187,10 @@ int main()
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    std::cout << "\n\u2705 Search completed.\n";
+    std::cout << "\n Search completed.\n";
     std::cout << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
     std::cout << "Total files scanned: " << totalFiles << std::endl;
     std::cout << "Results saved to: " << logFileName << std::endl;
-
 
     return 0;
 }
