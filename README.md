@@ -15,11 +15,11 @@ Verilen bilgilere göre (e-posta, isim, telefon numarası vb.) kayıtlı dosya t
 
 Clone Project
 ```bash 
-  https://github.com/Mstf1112/FileInfoExtractor.git
+  gitclone https://github.com/Mstf1112/FileInfoExtractor.git
 ```
 Execute
 ```bash 
-  g++ -std=c++17 -pthread main.cpp -o main
+  g++ -std=c++20 -pthread main.cpp -o main
 ```
 Start
 ```bash 
