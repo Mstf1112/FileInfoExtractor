@@ -17,6 +17,8 @@ namespace fs = std::filesystem;
 // ANSI escape codes
 const std::string RESET = "\033[0m";
 const std::string GREEN = "\033[32m";
+// İstersen ekle:
+// const std::string YELLOW = "\033[33m";
 
 // Mutex for thread-safe logging and output
 std::mutex logMutex;
@@ -151,7 +153,6 @@ int main()
         }
     }
 
-    // Start timer
     auto startTime = std::chrono::high_resolution_clock::now();
 
     fs::path resultsFolder = createResultsFolder();
@@ -160,9 +161,6 @@ int main()
     logFile << "File Path,Found Line\n";
 
     std::vector<std::future<bool>> futures;
-    int totalFiles = 0;
-
-    // İlk olarak desteklenen tüm dosyaların listesini al
     std::vector<fs::path> filesToScan;
     for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
     {
@@ -174,7 +172,8 @@ int main()
             }
         }
     }
-    totalFiles = static_cast<int>(filesToScan.size());
+
+    int totalFiles = static_cast<int>(filesToScan.size());
 
     if (totalFiles == 0)
     {
@@ -186,13 +185,11 @@ int main()
     {
         semaphore.acquire();
 
-        futures.push_back(std::async(std::launch::async, [&semaphore, filePath, &searchTerms, userChoice, &logFile, startTime, totalFiles]() {
+        futures.push_back(std::async(std::launch::async, [filePath, &searchTerms, userChoice, &logFile, startTime, totalFiles]() {
             bool result = searchInFile(filePath.string(), searchTerms, userChoice == 2, logFile);
 
-            // İşlem tamamlandı, sayacı arttır
             int processed = ++filesProcessed;
 
-            // İlerleme raporu (her 10 dosyada veya son dosyada)
             if (processed % 10 == 0 || processed == totalFiles)
             {
                 auto now = std::chrono::high_resolution_clock::now();
@@ -216,16 +213,16 @@ int main()
         }));
     }
 
-    // Tüm thread'lerin bitmesini bekle
     for (auto& f : futures)
         f.get();
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-     std::cout << "\nSearch completed.\n";
-     std::cout << YELLOW << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
-     std::cout << "Total files scanned: " << totalFiles << RESET << std::endl;
-     std::cout << "Results saved to: " << logFileName << std::endl;
+    std::cout << std::endl << "\n Search completed." << std::endl;
+    std::cout << "Time elapsed: " << duration.count() / 1000.0 << " seconds" << std::endl;
+    std::cout << "Total files scanned: " << totalFiles << std::endl;
+    std::cout << "Results saved to: " << logFileName << std::endl;
+
     return 0;
 }
