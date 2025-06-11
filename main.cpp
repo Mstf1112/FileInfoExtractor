@@ -12,11 +12,10 @@
 
 namespace fs = std::filesystem;
 
-// ANSI escape codes
 const std::string RESET = "\033[0m";
 const std::string GREEN = "\033[32m";
+const std::string YELLOW = "\033[33m";
 
-// Mutex for thread-safe logging
 std::mutex logMutex;
 
 void showSupportedFormats()
@@ -142,7 +141,6 @@ int main()
         }
     }
 
-    // Start timer
     auto startTime = std::chrono::high_resolution_clock::now();
 
     fs::path resultsFolder = createResultsFolder();
@@ -153,29 +151,46 @@ int main()
     std::vector<std::future<bool>> futures;
     int totalFiles = 0;
 
-    for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
+    try
     {
-        if (fs::is_regular_file(entry))
+        for (auto it = fs::recursive_directory_iterator(fs::current_path(), fs::directory_options::skip_permission_denied);
+             it != fs::recursive_directory_iterator(); ++it)
         {
-            std::string ext = entry.path().extension().string();
-            if (isSupportedExtension(ext))
+            try
             {
-                ++totalFiles;
-                futures.push_back(std::async(std::launch::async, searchInFile, entry.path().string(), std::ref(searchTerms), userChoice == 2, std::ref(logFile)));
+                const auto& entry = *it;
+                if (fs::is_regular_file(entry))
+                {
+                    std::string ext = entry.path().extension().string();
+                    if (isSupportedExtension(ext))
+                    {
+                        ++totalFiles;
+                        futures.push_back(std::async(std::launch::async, searchInFile, entry.path().string(), std::ref(searchTerms), userChoice == 2, std::ref(logFile)));
+                    }
+                }
+            }
+            catch (const fs::filesystem_error& e)
+            {
+                std::lock_guard<std::mutex> guard(logMutex);
+                std::cerr << "Filesystem error while accessing file: " << e.what() << std::endl;
+                continue;
             }
         }
     }
+    catch (const fs::filesystem_error& e)
+    {
+        std::cerr << "Filesystem traversal error: " << e.what() << std::endl;
+    }
 
-    // Wait for all threads
     for (auto& f : futures) f.get();
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    std::cout << "\n✅ Search completed.\n";
-    std::cout << "🕐 Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
-    std::cout << "📄 Total files scanned: " << totalFiles << std::endl;
-    std::cout << "📁 Results saved to: " << logFileName << std::endl;
+    std::cout << "\n\u2705 Search completed.\n";
+    std::cout << "\ud83d\udd50 Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
+    std::cout << YELLOW << "\ud83d\udcc4 Total files scanned: " << totalFiles << RESET << std::endl;
+    std::cout << "\ud83d\udcc1 Results saved to: " << logFileName << std::endl;
 
     return 0;
 }
