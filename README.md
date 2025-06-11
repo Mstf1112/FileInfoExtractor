@@ -19,7 +19,7 @@ Clone Project
 ```
 Execute
 ```bash 
-  g++ -std=c++17 -pthread search.cpp -o search
+  g++ -std=c++17 -pthread main.cpp -o main
 ```
 Start
 ```bash 
