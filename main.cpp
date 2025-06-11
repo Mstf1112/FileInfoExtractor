@@ -9,18 +9,24 @@
 #include <algorithm>
 #include <future>
 #include <mutex>
+#include <atomic>
 #include <semaphore>
 
 namespace fs = std::filesystem;
 
+// ANSI escape codes
 const std::string RESET = "\033[0m";
 const std::string GREEN = "\033[32m";
-const std::string YELLOW = "\033[33m";
 
+// Mutex for thread-safe logging and output
 std::mutex logMutex;
 
-constexpr int MAX_PARALLEL = 64;
+// Semaphore to limit parallelism
+constexpr int MAX_PARALLEL = 8;
 std::counting_semaphore<MAX_PARALLEL> semaphore(MAX_PARALLEL);
+
+// Atomic counter for processed files
+std::atomic<int> filesProcessed{0};
 
 void showSupportedFormats()
 {
@@ -145,6 +151,7 @@ int main()
         }
     }
 
+    // Start timer
     auto startTime = std::chrono::high_resolution_clock::now();
 
     fs::path resultsFolder = createResultsFolder();
@@ -155,42 +162,70 @@ int main()
     std::vector<std::future<bool>> futures;
     int totalFiles = 0;
 
-    try
+    // İlk olarak desteklenen tüm dosyaların listesini al
+    std::vector<fs::path> filesToScan;
+    for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
     {
-        for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
+        if (fs::is_regular_file(entry))
         {
-            if (fs::is_regular_file(entry))
+            if (isSupportedExtension(entry.path().extension().string()))
             {
-                std::string ext = entry.path().extension().string();
-                if (isSupportedExtension(ext))
-                {
-                    ++totalFiles;
-
-                    futures.push_back(std::async(std::launch::async,
-                        [sem = &semaphore, entry, &searchTerms, userChoice, &logFile]() {
-                            sem->acquire();
-                            bool result = searchInFile(entry.path().string(), searchTerms, userChoice == 2, logFile);
-                            sem->release();
-                            return result;
-                    }));
-                }
+                filesToScan.push_back(entry.path());
             }
         }
     }
-    catch (const fs::filesystem_error& e)
+    totalFiles = static_cast<int>(filesToScan.size());
+
+    if (totalFiles == 0)
     {
-        std::cerr << "Filesystem traversal error: " << e.what() << std::endl;
+        std::cout << "No supported files found to scan." << std::endl;
+        return 0;
     }
 
-    for (auto& f : futures) f.get();
+    for (const auto& filePath : filesToScan)
+    {
+        semaphore.acquire();
+
+        futures.push_back(std::async(std::launch::async, [&semaphore, filePath, &searchTerms, userChoice, &logFile, startTime, totalFiles]() {
+            bool result = searchInFile(filePath.string(), searchTerms, userChoice == 2, logFile);
+
+            // İşlem tamamlandı, sayacı arttır
+            int processed = ++filesProcessed;
+
+            // İlerleme raporu (her 10 dosyada veya son dosyada)
+            if (processed % 10 == 0 || processed == totalFiles)
+            {
+                auto now = std::chrono::high_resolution_clock::now();
+                auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+
+                double avgPerFile = elapsedMs / static_cast<double>(processed);
+                int remaining = totalFiles - processed;
+                double etaMs = avgPerFile * remaining;
+
+                double percentDone = (processed * 100.0) / totalFiles;
+
+                std::lock_guard<std::mutex> guard(logMutex);
+                std::cout << "\rProgress: " << processed << "/" << totalFiles
+                          << " (" << std::fixed << std::setprecision(2) << percentDone << "%), "
+                          << "Elapsed: " << elapsedMs / 1000.0 << "s, "
+                          << "ETA: " << etaMs / 1000.0 << "s        " << std::flush;
+            }
+
+            semaphore.release();
+            return result;
+        }));
+    }
+
+    // Tüm thread'lerin bitmesini bekle
+    for (auto& f : futures)
+        f.get();
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    std::cout << "\nSearch completed.\n";
-    std::cout << YELLOW << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
-    std::cout << "Total files scanned: " << totalFiles << RESET << std::endl;
-    std::cout << "Results saved to: " << logFileName << std::endl;
-
+     std::cout << "\nSearch completed.\n";
+     std::cout << YELLOW << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n";
+     std::cout << "Total files scanned: " << totalFiles << RESET << std::endl;
+     std::cout << "Results saved to: " << logFileName << std::endl;
     return 0;
 }
