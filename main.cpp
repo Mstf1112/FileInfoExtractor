@@ -9,25 +9,32 @@
 #include <algorithm>
 #include <future>
 #include <mutex>
+#include <thread>
+#include <queue>
+#include <condition_variable>
 #include <atomic>
 #include <semaphore>
 
 namespace fs = std::filesystem;
 
-// ANSI escape codes
+// Renkler
 const std::string RESET = "\033[0m";
 const std::string GREEN = "\033[32m";
-// İstersen ekle:
-// const std::string YELLOW = "\033[33m";
+const std::string YELLOW = "\033[33m";
 
-// Mutex for thread-safe logging and output
-std::mutex logMutex;
-
-// Semaphore to limit parallelism
+// Maksimum paralel thread sayısı
 constexpr int MAX_PARALLEL = 8;
 std::counting_semaphore<MAX_PARALLEL> semaphore(MAX_PARALLEL);
 
-// Atomic counter for processed files
+// Mutexler
+std::mutex coutMutex;
+std::mutex queueMutex;
+std::condition_variable cv;
+
+// Log kuyruğu: (dosya yolu, bulunan satır)
+std::queue<std::pair<std::string, std::string>> logQueue;
+
+// Dosya başına işlenen sayısı için atomic sayaç
 std::atomic<int> filesProcessed{0};
 
 void showSupportedFormats()
@@ -44,10 +51,31 @@ std::string generateUniqueFileName(const std::string& extension)
     return ss.str();
 }
 
-void logToCSV(const std::string& filePath, const std::string& foundLine, std::ofstream& logFile)
+// Log kuyruğuna ekle
+void enqueueLog(const std::string& filePath, const std::string& foundLine)
 {
-    std::lock_guard<std::mutex> guard(logMutex);
-    logFile << "\"" << filePath << "\",\"" << foundLine << "\"\n";
+    {
+        std::lock_guard<std::mutex> lock(queueMutex);
+        logQueue.emplace(filePath, foundLine);
+    }
+    cv.notify_one();
+}
+
+// Log dosyasına yazan thread fonksiyonu
+void logWorker(std::ofstream& logFile, std::atomic<bool>& doneFlag)
+{
+    while (!doneFlag.load() || !logQueue.empty())
+    {
+        std::unique_lock<std::mutex> lock(queueMutex);
+        cv.wait(lock, [&] { return doneFlag.load() || !logQueue.empty(); });
+        while (!logQueue.empty())
+        {
+            auto& entry = logQueue.front();
+            logFile << "\"" << entry.first << "\",\"" << entry.second << "\"\n";
+            logQueue.pop();
+        }
+        logFile.flush();
+    }
 }
 
 std::vector<std::string> readEmailsFromFile(const std::string& path)
@@ -62,13 +90,18 @@ std::vector<std::string> readEmailsFromFile(const std::string& path)
     return emails;
 }
 
-bool searchInFile(const std::string& filePath, const std::vector<std::string>& searchTerms, bool listAll, std::ofstream& logFile)
+bool searchInFile(const std::string& filePath, const std::vector<std::string>& searchTerms, bool listAll)
 {
+    semaphore.acquire(); // Thread sınırlandırması
+
     std::ifstream file(filePath);
     if (!file.is_open())
     {
-        std::lock_guard<std::mutex> guard(logMutex);
-        std::cerr << "Cannot open file: " << filePath << std::endl;
+        {
+            std::lock_guard<std::mutex> lock(coutMutex);
+            std::cerr << "Cannot open file: " << filePath << std::endl;
+        }
+        semaphore.release();
         return false;
     }
 
@@ -82,17 +115,21 @@ bool searchInFile(const std::string& filePath, const std::vector<std::string>& s
             if (line.find(term) != std::string::npos)
             {
                 {
-                    std::lock_guard<std::mutex> guard(logMutex);
+                    std::lock_guard<std::mutex> lock(coutMutex);
                     std::cout << GREEN << "Found in: " << filePath << "\nLine: " << line << RESET << std::endl;
-                    logToCSV(filePath, line, logFile);
                 }
-
+                enqueueLog(filePath, line);
                 found = true;
-                if (!listAll) return true;
+                if (!listAll)
+                {
+                    semaphore.release();
+                    return true;
+                }
             }
         }
     }
 
+    semaphore.release();
     return found;
 }
 
@@ -153,6 +190,7 @@ int main()
         }
     }
 
+    // Başlangıç zamanı
     auto startTime = std::chrono::high_resolution_clock::now();
 
     fs::path resultsFolder = createResultsFolder();
@@ -160,69 +198,88 @@ int main()
     std::ofstream logFile(logFileName);
     logFile << "File Path,Found Line\n";
 
+    std::atomic<bool> doneFlag{false};
+
+    // Log yazma threadi
+    std::thread loggerThread(logWorker, std::ref(logFile), std::ref(doneFlag));
+
     std::vector<std::future<bool>> futures;
-    std::vector<fs::path> filesToScan;
+
+    // Toplam dosya sayısını hesapla
+    int totalFiles = 0;
     for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
     {
         if (fs::is_regular_file(entry))
         {
             if (isSupportedExtension(entry.path().extension().string()))
             {
-                filesToScan.push_back(entry.path());
+                ++totalFiles;
             }
         }
     }
 
-    int totalFiles = static_cast<int>(filesToScan.size());
-
     if (totalFiles == 0)
     {
-        std::cout << "No supported files found to scan." << std::endl;
+        std::cout << "No supported files found in current directory.\n";
+        doneFlag = true;
+        cv.notify_one();
+        loggerThread.join();
         return 0;
     }
 
-    for (const auto& filePath : filesToScan)
+    // Dosyaları işleme
+    for (const auto& entry : fs::recursive_directory_iterator(fs::current_path()))
     {
-        semaphore.acquire();
-
-        futures.push_back(std::async(std::launch::async, [filePath, &searchTerms, userChoice, &logFile, startTime, totalFiles]() {
-            bool result = searchInFile(filePath.string(), searchTerms, userChoice == 2, logFile);
-
-            int processed = ++filesProcessed;
-
-            if (processed % 10 == 0 || processed == totalFiles)
+        if (fs::is_regular_file(entry))
+        {
+            std::string ext = entry.path().extension().string();
+            if (isSupportedExtension(ext))
             {
-                auto now = std::chrono::high_resolution_clock::now();
-                auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+                std::string filePath = entry.path().string();
 
-                double avgPerFile = elapsedMs / static_cast<double>(processed);
-                int remaining = totalFiles - processed;
-                double etaMs = avgPerFile * remaining;
+                futures.push_back(std::async(std::launch::async, [filePath, &searchTerms, userChoice, totalFiles, startTime]() {
+                    bool res = searchInFile(filePath, searchTerms, userChoice == 2);
 
-                double percentDone = (processed * 100.0) / totalFiles;
+                    int processed = ++filesProcessed;
 
-                std::lock_guard<std::mutex> guard(logMutex);
-                std::cout << "\rProgress: " << processed << "/" << totalFiles
-                          << " (" << std::fixed << std::setprecision(2) << percentDone << "%), "
-                          << "Elapsed: " << elapsedMs / 1000.0 << "s, "
-                          << "ETA: " << etaMs / 1000.0 << "s        " << std::flush;
+                    // İlerleme bilgisi
+                    if (processed % 10 == 0 || processed == totalFiles)
+                    {
+                        auto now = std::chrono::high_resolution_clock::now();
+                        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime).count();
+
+                        double avgPerFile = elapsedMs / static_cast<double>(processed);
+                        int remaining = totalFiles - processed;
+                        double etaMs = avgPerFile * remaining;
+
+                        double percentDone = (processed * 100.0) / totalFiles;
+
+                        std::lock_guard<std::mutex> lock(coutMutex);
+                        std::cout << "\rProgress: " << processed << "/" << totalFiles
+                                  << " (" << std::fixed << std::setprecision(2) << percentDone << "%), "
+                                  << "Elapsed: " << elapsedMs / 1000.0 << "s, "
+                                  << "ETA: " << etaMs / 1000.0 << "s        " << std::flush;
+                    }
+
+                    return res;
+                }));
             }
-
-            semaphore.release();
-            return result;
-        }));
+        }
     }
 
-    for (auto& f : futures)
-        f.get();
+    for (auto& f : futures) f.get();
+
+    doneFlag = true;
+    cv.notify_one();
+    loggerThread.join();
 
     auto endTime = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime);
 
-    std::cout << std::endl << "\n Search completed." << std::endl;
-    std::cout << "Time elapsed: " << duration.count() / 1000.0 << " seconds" << std::endl;
-    std::cout << "Total files scanned: " << totalFiles << std::endl;
-    std::cout << "Results saved to: " << logFileName << std::endl;
+    std::cout << "\n\n Search completed.\n";
+    std::cout << YELLOW << "Time elapsed: " << duration.count() / 1000.0 << " seconds\n" << RESET;
+    std::cout << YELLOW << "Total files scanned: " << totalFiles << "\n" << RESET;
+    std::cout << YELLOW << "Results saved to: " << logFileName << "\n" << RESET;
 
     return 0;
 }
